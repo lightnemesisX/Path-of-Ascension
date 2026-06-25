@@ -1,8 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════
-//  AUDIO ENGINE — Web Audio API synthesized sounds + YouTube music
+//  AUDIO ENGINE — Rebuilt from scratch
+//  Web Audio API synthesized SFX + YouTube iframe background music
+//  Initializes ONCE. Survives state changes and auto-saves.
 // ═══════════════════════════════════════════════════════════════════
 
-const AUDIO_SETTINGS_KEY = 'cultivation-rpg-audio';
+const AUDIO_SETTINGS_KEY = 'cultivation-rpg-audio-v2';
 
 export interface AudioSettings {
   musicEnabled: boolean;
@@ -10,248 +12,255 @@ export interface AudioSettings {
   musicVolume: number; // 0-100
 }
 
-const DEFAULT_SETTINGS: AudioSettings = {
-  musicEnabled: true,
-  sfxEnabled: true,
-  musicVolume: 40,
-};
+const DEFAULTS: AudioSettings = { musicEnabled: true, sfxEnabled: true, musicVolume: 40 };
 
 export function loadAudioSettings(): AudioSettings {
   try {
     const raw = localStorage.getItem(AUDIO_SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(raw);
+    if (!raw) return { ...DEFAULTS };
+    const p = JSON.parse(raw);
     return {
-      musicEnabled: parsed.musicEnabled ?? true,
-      sfxEnabled: parsed.sfxEnabled ?? true,
-      musicVolume: parsed.musicVolume ?? 40,
+      musicEnabled: typeof p.musicEnabled === 'boolean' ? p.musicEnabled : true,
+      sfxEnabled: typeof p.sfxEnabled === 'boolean' ? p.sfxEnabled : true,
+      musicVolume: typeof p.musicVolume === 'number' ? p.musicVolume : 40,
     };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
+  } catch { return { ...DEFAULTS }; }
 }
 
-export function saveAudioSettings(settings: AudioSettings) {
-  try {
-    localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(settings));
-  } catch { /* ignore */ }
+export function saveAudioSettings(s: AudioSettings) {
+  try { localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(s)); } catch {}
 }
 
-// ─── WEB AUDIO CONTEXT (lazy singleton) ───────────────────────────
+// ─── WEB AUDIO CONTEXT (singleton, created once) ──────────────────
 
 let _ctx: AudioContext | null = null;
+let _ctxResumed = false;
 
-function getCtx(): AudioContext {
-  if (!_ctx) {
-    _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  }
-  // Resume if suspended (browser autoplay policy)
-  if (_ctx.state === 'suspended') {
-    _ctx.resume();
-  }
+function ctx(): AudioContext {
+  if (!_ctx) _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   return _ctx;
 }
 
-// Ensure context is resumed on first user interaction
-export function ensureAudioContext() {
-  const ctx = getCtx();
-  if (ctx.state === 'suspended') ctx.resume();
-}
-
-// ─── SOUND EFFECT GENERATORS ──────────────────────────────────────
-
-function playTone(
-  frequency: number,
-  duration: number,
-  type: OscillatorType = 'sine',
-  volume: number = 0.3,
-  fadeOut: boolean = true,
-) {
-  const settings = loadAudioSettings();
-  if (!settings.sfxEnabled) return;
-
-  try {
-    const ctx = getCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = type;
-    osc.frequency.setValueAtTime(frequency, ctx.currentTime);
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-
-    if (fadeOut) {
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    }
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + duration);
-  } catch {
-    // Audio context not available
+/** Call on any user gesture to unlock the audio context */
+export function ensureAudio() {
+  const c = ctx();
+  if (c.state === 'suspended') {
+    c.resume().then(() => { _ctxResumed = true; });
+  } else {
+    _ctxResumed = true;
   }
 }
 
-function playSequence(
-  notes: { freq: number; dur: number; delay: number; type?: OscillatorType; vol?: number }[]
-) {
-  const settings = loadAudioSettings();
-  if (!settings.sfxEnabled) return;
+// ─── PRIMITIVE SOUND BUILDERS ─────────────────────────────────────
 
+function tone(freq: number, dur: number, type: OscillatorType, vol: number, delay = 0) {
+  if (!loadAudioSettings().sfxEnabled) return;
   try {
-    const ctx = getCtx();
-    for (const note of notes) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = note.type || 'sine';
-      osc.frequency.setValueAtTime(note.freq, ctx.currentTime + note.delay);
-      gain.gain.setValueAtTime(note.vol ?? 0.25, ctx.currentTime + note.delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + note.delay + note.dur);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime + note.delay);
-      osc.stop(ctx.currentTime + note.delay + note.dur);
-    }
-  } catch {
-    // ignore
-  }
+    const c = ctx();
+    if (c.state === 'suspended') return;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, c.currentTime + delay);
+    g.gain.setValueAtTime(vol, c.currentTime + delay);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + delay + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(c.currentTime + delay);
+    o.stop(c.currentTime + delay + dur + 0.05);
+  } catch {}
+}
+
+function noise(dur: number, vol: number, delay = 0) {
+  if (!loadAudioSettings().sfxEnabled) return;
+  try {
+    const c = ctx();
+    if (c.state === 'suspended') return;
+    const bufSize = Math.floor(c.sampleRate * dur);
+    const buf = c.createBuffer(1, bufSize, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const g = c.createGain();
+    g.gain.setValueAtTime(vol, c.currentTime + delay);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + delay + dur);
+    src.connect(g); g.connect(c.destination);
+    src.start(c.currentTime + delay);
+    src.stop(c.currentTime + delay + dur + 0.05);
+  } catch {}
+}
+
+function sweep(startFreq: number, endFreq: number, dur: number, type: OscillatorType, vol: number, delay = 0) {
+  if (!loadAudioSettings().sfxEnabled) return;
+  try {
+    const c = ctx();
+    if (c.state === 'suspended') return;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(startFreq, c.currentTime + delay);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, endFreq), c.currentTime + delay + dur);
+    g.gain.setValueAtTime(vol, c.currentTime + delay);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + delay + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(c.currentTime + delay);
+    o.stop(c.currentTime + delay + dur + 0.05);
+  } catch {}
 }
 
 // ─── PUBLIC SOUND EFFECTS ─────────────────────────────────────────
 
-/** Soft click for UI buttons */
+/** Soft click for every button press */
 export function sfxClick() {
-  playTone(800, 0.05, 'sine', 0.15);
+  tone(800, 0.05, 'sine', 0.15);
 }
 
 /** Combat hit — short low thud */
 export function sfxHit() {
-  playTone(150, 0.1, 'square', 0.25);
+  tone(150, 0.1, 'square', 0.2);
 }
 
-/** Realm breakthrough — ascending chime */
-export function sfxBreakthrough() {
-  playSequence([
-    { freq: 523, dur: 0.25, delay: 0, type: 'sine', vol: 0.3 },    // C5
-    { freq: 659, dur: 0.25, delay: 0.2, type: 'sine', vol: 0.3 },  // E5
-    { freq: 784, dur: 0.35, delay: 0.4, type: 'sine', vol: 0.35 }, // G5
-    { freq: 1047, dur: 0.5, delay: 0.65, type: 'sine', vol: 0.3 }, // C6
-  ]);
+/** Retreat/flee — whoosh (white noise burst) */
+export function sfxFlee() {
+  noise(0.15, 0.15);
 }
 
-/** Death / game over — deep descending tone */
+/** Defeated in combat — deep descending tone */
 export function sfxDeath() {
-  playSequence([
-    { freq: 300, dur: 0.3, delay: 0, type: 'sawtooth', vol: 0.2 },
-    { freq: 200, dur: 0.3, delay: 0.2, type: 'sawtooth', vol: 0.18 },
-    { freq: 120, dur: 0.5, delay: 0.4, type: 'sawtooth', vol: 0.15 },
-    { freq: 80, dur: 0.7, delay: 0.6, type: 'sawtooth', vol: 0.1 },
-  ]);
+  sweep(200, 80, 0.6, 'sawtooth', 0.15);
 }
 
-/** Item received — bright short ping */
+/** Tribulation screen — rumbling thunder + sharp crack */
+export function sfxTribulation() {
+  tone(60, 0.8, 'sawtooth', 0.12);
+  tone(50, 0.6, 'square', 0.08, 0.1);
+  noise(0.1, 0.35, 0.7); // crack
+}
+
+/** Cultivation breakthrough — ascending 3-note chime */
+export function sfxBreakthrough() {
+  tone(400, 0.25, 'sine', 0.25, 0);
+  tone(600, 0.25, 'sine', 0.25, 0.2);
+  tone(900, 0.35, 'sine', 0.28, 0.4);
+}
+
+/** Item received / loot — bright ping */
 export function sfxItemReceived() {
-  playTone(1200, 0.08, 'sine', 0.25);
+  tone(1200, 0.08, 'sine', 0.2);
 }
 
-/** Failed action — buzzer tone */
+/** Socialize — brief ambient murmur */
+export function sfxSocialize() {
+  tone(350, 0.4, 'sine', 0.04);
+  tone(420, 0.35, 'sine', 0.03, 0.05);
+  tone(480, 0.3, 'sine', 0.03, 0.1);
+  noise(0.4, 0.03, 0);
+}
+
+/** Failed action / not enough resources — buzzer */
 export function sfxFail() {
-  playSequence([
-    { freq: 200, dur: 0.12, delay: 0, type: 'square', vol: 0.15 },
-    { freq: 180, dur: 0.12, delay: 0.1, type: 'square', vol: 0.12 },
-  ]);
+  tone(200, 0.15, 'square', 0.12);
+  tone(180, 0.12, 'square', 0.08, 0.08);
 }
 
-/** Win/achievement — short triumphant 4-note fanfare */
+/** Win / achievement — triumphant 4-note fanfare */
 export function sfxVictory() {
-  playSequence([
-    { freq: 523, dur: 0.15, delay: 0, type: 'sine', vol: 0.25 },     // C5
-    { freq: 659, dur: 0.15, delay: 0.12, type: 'sine', vol: 0.25 },  // E5
-    { freq: 784, dur: 0.15, delay: 0.24, type: 'sine', vol: 0.28 },  // G5
-    { freq: 1047, dur: 0.4, delay: 0.36, type: 'sine', vol: 0.3 },   // C6 (hold)
-  ]);
+  tone(523, 0.15, 'sine', 0.22, 0);
+  tone(659, 0.15, 'sine', 0.22, 0.12);
+  tone(784, 0.15, 'sine', 0.25, 0.24);
+  tone(1047, 0.4, 'sine', 0.28, 0.36);
 }
 
-/** Year advance chime */
+/** Pill consumed / item used — soft pop */
+export function sfxPop() {
+  tone(600, 0.06, 'sine', 0.18);
+}
+
+/** Weapon equipped — metallic ring */
+export function sfxEquip() {
+  tone(1800, 0.1, 'sine', 0.15);
+  tone(2400, 0.06, 'sine', 0.08, 0.03);
+}
+
+/** Year advance — gentle two-tone chime */
 export function sfxYearAdvance() {
-  playSequence([
-    { freq: 440, dur: 0.15, delay: 0, type: 'sine', vol: 0.15 },
-    { freq: 550, dur: 0.2, delay: 0.12, type: 'sine', vol: 0.15 },
-  ]);
+  tone(440, 0.15, 'sine', 0.12, 0);
+  tone(550, 0.2, 'sine', 0.12, 0.12);
 }
 
-// ─── MUSIC CONTROLLER ─────────────────────────────────────────────
+// ─── YOUTUBE MUSIC CONTROLLER (singleton) ─────────────────────────
+// The iframe is created ONCE and never destroyed.
+// It survives React re-renders, state changes, and auto-saves.
 
-let _musicIframe: HTMLIFrameElement | null = null;
-let _musicStarted = false;
-let _musicMuted = false;
+let _iframe: HTMLIFrameElement | null = null;
+let _iframeReady = false;
+let _musicStartedByUser = false;
 
-export function isMusicPlaying(): boolean {
-  return _musicStarted && !_musicMuted;
+function getMusicSrc(mute: boolean): string {
+  const m = mute ? 1 : 0;
+  return `https://www.youtube.com/embed/Pt-lVD3itVM?autoplay=1&loop=1&playlist=Pt-lVD3itVM&controls=0&showinfo=0&rel=0&fs=0&modestbranding=1&mute=${m}&start=0&enablejsapi=0`;
 }
 
-export function createMusicIframe(): HTMLIFrameElement {
-  if (_musicIframe) return _musicIframe;
-
-  const iframe = document.createElement('iframe');
-  iframe.id = 'yt-music-iframe';
-  iframe.width = '1';
-  iframe.height = '1';
-  iframe.allow = 'autoplay';
-  iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+/** Create the music iframe. Call once on app mount. */
+export function initMusic() {
+  if (_iframe) return; // Already initialized — never re-create
 
   const settings = loadAudioSettings();
-  const mute = settings.musicEnabled ? 0 : 1;
-  const vol = settings.musicVolume;
-  iframe.src = `https://www.youtube.com/embed/Pt-lVD3itVM?autoplay=1&loop=1&playlist=Pt-lVD3itVM&controls=0&showinfo=0&rel=0&mute=${mute}&start=0`;
+  if (!settings.musicEnabled) return; // User has music disabled
 
-  document.body.appendChild(iframe);
-  _musicIframe = iframe;
-  _musicStarted = true;
-  _musicMuted = !settings.musicEnabled;
+  const el = document.createElement('iframe');
+  el.id = 'yt-music-iframe';
+  el.allow = 'autoplay; encrypted-media';
+  el.setAttribute('allowtransparency', 'true');
+  el.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;border:none;';
+  el.src = getMusicSrc(false);
 
-  return iframe;
+  document.body.appendChild(el);
+  _iframe = el;
+  _iframeReady = true;
 }
 
+/** Start music (called from user gesture if autoplay was blocked) */
 export function startMusic() {
-  if (_musicStarted && _musicIframe) {
-    // Reload iframe to restart
-    const settings = loadAudioSettings();
-    _musicIframe.src = `https://www.youtube.com/embed/Pt-lVD3itVM?autoplay=1&loop=1&playlist=Pt-lVD3itVM&controls=0&showinfo=0&rel=0&mute=0&start=0`;
-    _musicMuted = false;
-    settings.musicEnabled = true;
-    saveAudioSettings(settings);
-    return;
+  _musicStartedByUser = true;
+  const settings = loadAudioSettings();
+  settings.musicEnabled = true;
+  saveAudioSettings(settings);
+
+  if (_iframe) {
+    // Reload the iframe to start
+    _iframe.src = getMusicSrc(false);
+  } else {
+    initMusic();
   }
-  createMusicIframe();
+  _iframeReady = true;
 }
 
+/** Toggle music on/off */
 export function toggleMusic(): boolean {
   const settings = loadAudioSettings();
   settings.musicEnabled = !settings.musicEnabled;
   saveAudioSettings(settings);
 
-  if (!_musicIframe) {
-    if (settings.musicEnabled) {
-      createMusicIframe();
+  if (settings.musicEnabled) {
+    if (!_iframe) {
+      initMusic();
+    } else {
+      _iframe.src = getMusicSrc(false);
     }
-    return settings.musicEnabled;
+  } else {
+    if (_iframe) {
+      _iframe.src = 'about:blank'; // Stop the music entirely
+    }
   }
-
-  // Reload iframe with new mute state
-  const mute = settings.musicEnabled ? 0 : 1;
-  _musicIframe.src = `https://www.youtube.com/embed/Pt-lVD3itVM?autoplay=1&loop=1&playlist=Pt-lVD3itVM&controls=0&showinfo=0&rel=0&mute=${mute}&start=0`;
-  _musicMuted = !settings.musicEnabled;
-  _musicStarted = true;
 
   return settings.musicEnabled;
 }
 
-export function setMusicVolume(vol: number) {
-  const settings = loadAudioSettings();
-  settings.musicVolume = vol;
-  saveAudioSettings(settings);
-  // Note: YouTube iframe API doesn't support volume via URL params alone.
-  // Volume is best-effort via the initial embed. For precise control we'd need
-  // the YT IFrame API, but the simple iframe approach is more reliable for autoplay.
+export function isMusicPlaying(): boolean {
+  return _iframeReady && loadAudioSettings().musicEnabled;
+}
+
+export function musicNeedsUserStart(): boolean {
+  return loadAudioSettings().musicEnabled && !_musicStartedByUser && !_iframeReady;
 }

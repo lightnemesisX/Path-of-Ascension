@@ -5,7 +5,7 @@ import {
   createTribulationState, resolveTribulationAction,
   advanceToNextWave, usePillBetweenWaves, getCinematicText,
 } from '../game/tribulation';
-import { sfxHit, sfxBreakthrough, sfxDeath, sfxClick, sfxFail, ensureAudioContext } from '../game/audio';
+import { sfxHit, sfxBreakthrough, sfxDeath, sfxClick, sfxTribulation, sfxPop, ensureAudio } from '../game/audio';
 
 interface Props {
   state: GameState;
@@ -16,7 +16,10 @@ interface Props {
 }
 
 export const TribulationScreen: React.FC<Props> = ({ state, targetRealmIdx, targetStage, onSuccess, onFailure }) => {
-  const [ts, setTs] = useState<TribulationState>(() => createTribulationState(state, targetRealmIdx, targetStage));
+  const [ts, setTs] = useState<TribulationState>(() => {
+    sfxTribulation(); // Thunder rumble when tribulation screen opens
+    return createTribulationState(state, targetRealmIdx, targetStage);
+  });
 
   const realmColor = REALM_COLORS[REALMS[targetRealmIdx]] || '#9966ff';
   const realmName = REALMS[targetRealmIdx];
@@ -28,7 +31,7 @@ export const TribulationScreen: React.FC<Props> = ({ state, targetRealmIdx, targ
   const [pillUsed, setPillUsed] = useState(false);
 
   const handleAction = (action: TribulationAction) => {
-    ensureAudioContext();
+    ensureAudio();
     sfxHit();
     const next = resolveTribulationAction(ts, action);
     if (next.phase === 'failure') sfxDeath();
@@ -45,7 +48,7 @@ export const TribulationScreen: React.FC<Props> = ({ state, targetRealmIdx, targ
   };
 
   const handleUsePill = () => {
-    sfxClick();
+    sfxPop(); // Pill consumed sound
     const next = usePillBetweenWaves(ts, 50);
     setTs(next);
     setPillUsed(true);

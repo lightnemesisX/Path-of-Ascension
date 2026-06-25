@@ -21,7 +21,7 @@ import { updateMissionProgress } from './game/system';
 import { generateExploreEvent, ExploreEvent, ExploreOutcome } from './game/explore';
 import { requiresTribulation } from './game/tribulation';
 import { shouldTriggerRaid } from './game/raid';
-import { sfxClick, sfxBreakthrough, sfxDeath, sfxVictory, sfxItemReceived, sfxYearAdvance, ensureAudioContext } from './game/audio';
+import { sfxClick, sfxBreakthrough, sfxDeath, sfxVictory, sfxItemReceived, sfxYearAdvance, ensureAudio } from './game/audio';
 
 type Phase = 'menu' | 'creation' | 'tutorial' | 'playing' | 'gameover' | 'victory' | 'reincarnate';
 
@@ -45,6 +45,9 @@ export default function App() {
 
   useEffect(() => { setHas(hasSave()); }, []);
 
+  // Flash the save indicator
+  const flashSaved = useCallback(() => { setSaved(true); setTimeout(() => setSaved(false), 2000); }, []);
+
   const act = useCallback((fn: (s: GameState) => GameState) => {
     setGs(prev => {
       if (!prev) return prev;
@@ -52,10 +55,12 @@ export default function App() {
       // Sound effects for phase transitions
       if (ns.phase === 'reincarnate' && prev.phase !== 'reincarnate') {
         sfxDeath();
+        clearSave(); // CRITICAL: delete save on death
         setTimeout(() => setPhase('reincarnate'), 500);
       }
       if (ns.phase === 'victory' && prev.phase !== 'victory') {
         sfxVictory();
+        clearSave(); // CRITICAL: delete save on victory
         setTimeout(() => setPhase('victory'), 500);
       }
       // Breakthrough sound
@@ -65,17 +70,21 @@ export default function App() {
       // Year advance sound + raid check
       if (ns.year > prev.year) {
         sfxYearAdvance();
-        // Check for sect raid on year advance
         if (shouldTriggerRaid(ns)) {
           setTimeout(() => setShowRaid(true), 600);
         }
       }
+      // AUTO-SAVE after every action (saveGame already blocks dead/victory states)
+      if (ns.alive && ns.phase === 'playing') {
+        saveGame(ns);
+        flashSaved();
+      }
       return ns;
     });
-  }, []);
+  }, [flashSaved]);
 
   const doAction = useCallback((id: string) => {
-    ensureAudioContext();
+    ensureAudio();
     sfxClick();
     if (id === 'fight') {
       setBattleForceKind(null);
@@ -127,6 +136,7 @@ export default function App() {
         if (s.hp <= 0) {
           s = { ...s, alive: false, phase: 'reincarnate' };
           s.log = [...s.log, { year: s.year, age: s.age, text: `💀 You have fallen in combat...`, type: 'death' as const }];
+          clearSave(); // CRITICAL: delete save on death
           setTimeout(() => setPhase('reincarnate'), 500);
         }
       } else if (result === 'stalemate') {
@@ -134,9 +144,11 @@ export default function App() {
       } else {
         s.log = [...s.log, { year: s.year, age: s.age, text: `🏃 Fled from ${bs.enemy.name}.`, type: 'combat' as const }];
       }
+      // Auto-save after battle (saveGame blocks dead states)
+      if (s.alive && s.phase === 'playing') { saveGame(s); flashSaved(); }
       return s;
     });
-  }, []);
+  }, [flashSaved]);
 
   const handleTame = useCallback((bs: BattleState) => {
     setGs(prev => {
@@ -163,10 +175,12 @@ export default function App() {
       } else {
         s.log = [...s.log, { year: s.year, age: s.age, text: `🐾 Taming failed! The ${bs.enemy.name} escapes.`, type: 'event' as const }];
       }
+      // Auto-save after tame attempt
+      if (s.alive && s.phase === 'playing') { saveGame(s); flashSaved(); }
       return s;
     });
     setShowBattle(false);
-  }, []);
+  }, [flashSaved]);
 
   const handleExploreResolve = useCallback((outcome: ExploreOutcome, finalState: GameState) => {
     setExploreEvent(null);
@@ -190,11 +204,14 @@ export default function App() {
       if (s.hp <= 0) {
         s = { ...s, alive: false, phase: 'reincarnate' };
         s.log = [...s.log, { year: s.year, age: s.age, text: `💀 You perish during exploration...`, type: 'death' as const }];
+        clearSave(); // CRITICAL: delete save on death
         setTimeout(() => setPhase('reincarnate'), 500);
       }
+      // Auto-save after exploration (saveGame blocks dead states)
+      if (s.alive && s.phase === 'playing') { saveGame(s); flashSaved(); }
       return s;
     });
-  }, []);
+  }, [flashSaved]);
 
   const handleExploreBattle = useCallback((enemyKind: string) => {
     setExploreEvent(null);
@@ -208,7 +225,7 @@ export default function App() {
   const handleBreakthrough = useCallback(() => {
     if (!gs) return;
     sfxClick();
-    ensureAudioContext();
+    ensureAudio();
     const info = getNextBreakthroughInfo(gs);
     if (!info || !canAttemptBreakthrough(gs)) return;
 
@@ -279,16 +296,20 @@ export default function App() {
       if (REALMS[ts.targetRealmIdx] === 'True Immortal' && ts.targetStage === 'Late') {
         s = { ...s, phase: 'victory' };
         s.log = [...s.log, { year: s.year, age: s.age, text: `🌟 TRUE IMMORTALITY ACHIEVED!`, type: 'victory' as const }];
-        clearSave();
+        clearSave(); // CRITICAL: delete save on victory
         setTimeout(() => setPhase('victory'), 500);
+      } else {
+        // Auto-save after successful tribulation
+        saveGame(s); flashSaved();
       }
       return s;
     });
-  }, []);
+  }, [flashSaved]);
 
-  const handleTribulationFailure = useCallback((ts: TribulationState) => {
+  const handleTribulationFailure = useCallback(() => {
     setTribulation(null);
     sfxDeath();
+    clearSave(); // CRITICAL: delete save on tribulation death
     setGs(prev => {
       if (!prev) return prev;
       return {
@@ -307,7 +328,9 @@ export default function App() {
   }, []);
 
   const handleSave = useCallback(() => {
-    if (gs) { saveGame(gs); setSaved(true); setTimeout(() => setSaved(false), 1500); }
+    if (gs && gs.alive && gs.phase === 'playing') {
+      if (saveGame(gs)) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    }
   }, [gs]);
 
   const restart = useCallback(() => { clearSave(); setGs(null); setHas(false); setPhase('menu'); setShowSystem(false); setShowInv(false); setShowRealm(false); setShowCraft(false); setShowMenu(false); setShowBattle(false); setExploreEvent(null); setTribulation(null); }, []);
@@ -331,10 +354,12 @@ export default function App() {
       <div className="relative">
         <GameScreen state={gs} onAction={doAction} onOpenSystem={() => setShowSystem(true)} onOpenInventory={() => setShowInv(true)} onOpenMenu={() => setShowMenu(true)} onOpenRealmGuide={() => setShowRealm(true)} onOpenCrafting={() => setShowCraft(true)} onOpenSocial={() => setShowSocial(true)} onOpenFamily={() => setShowFamily(true)} onAttemptBreakthrough={handleBreakthrough} />
 
-        {/* Save indicator */}
-        <div className="fixed top-14 right-20 z-50">
-          {saved && <span className="text-jade font-ui text-xs bg-abyss/90 px-3 py-1.5 rounded-lg border border-jade/30 animate-fade-in">✓ Saved!</span>}
-          <button onClick={handleSave} className="text-[10px] font-ui px-3 py-1.5 bg-abyss/90 border border-mist/20 rounded-lg text-silver/60 hover:text-pearl hover:border-mist/40 transition-all">💾 Save</button>
+        {/* Save indicator + manual save button */}
+        <div className="fixed top-14 right-20 z-50 flex items-center gap-2">
+          {saved && <span className="text-jade font-ui text-[10px] bg-abyss/90 px-2.5 py-1 rounded-lg border border-jade/30 animate-fade-in">✓ Saved</span>}
+          {gs.alive && gs.phase === 'playing' && (
+            <button onClick={handleSave} className="text-[10px] font-ui px-3 py-1.5 bg-abyss/90 border border-mist/20 rounded-lg text-silver/60 hover:text-pearl hover:border-mist/40 transition-all">💾 Save</button>
+          )}
         </div>
 
         {/* Overlays */}
@@ -346,7 +371,7 @@ export default function App() {
         {exploreEvent && <ExploreEventComponent state={gs} event={exploreEvent} onResolve={handleExploreResolve} onTriggerBattle={handleExploreBattle} />}
         {tribulation && <TribulationScreen state={gs} targetRealmIdx={tribulation.targetRealmIdx} targetStage={tribulation.targetStage} onSuccess={handleTribulationSuccess} onFailure={handleTribulationFailure} />}
         {showFamily && <FamilyPanel state={gs} onClose={() => setShowFamily(false)} />}
-        {showRaid && <RaidScreen state={gs} onRaidEnd={(ns) => { setShowRaid(false); setGs(ns); }} />}
+        {showRaid && <RaidScreen state={gs} onRaidEnd={(ns) => { setShowRaid(false); setGs(ns); if (ns.alive) { saveGame(ns); flashSaved(); } else { clearSave(); } }} />}
         {showCraft && <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 backdrop-blur-sm p-4" onClick={() => setShowCraft(false)}><div className="bg-abyss border border-mist/30 rounded-2xl p-6 shadow-2xl animate-float-up max-w-md" onClick={e => e.stopPropagation()}><h2 className="font-display text-xl text-pearl mb-4">⚗️ Crafting</h2><div className="space-y-3 font-ui text-sm"><div className="bg-shadow/30 p-3 rounded-lg"><p className="text-pearl">Alchemy ({gs.stats.alchemy} skill)</p><p className="text-silver/50 text-xs">Herbs: {gs.herbs} · Need 3 per craft</p>{gs.herbs >= 3 ? <button onClick={() => { setGs(prev => prev ? { ...prev, herbs: prev.herbs - 3, stats: { ...prev.stats, alchemy: prev.stats.alchemy + Math.floor(Math.random() * 5) + 3, qi: prev.stats.qi + Math.floor(Math.random() * 6) + 2 } } : prev); }} className="mt-1 px-3 py-1 bg-jade/15 text-jade text-xs rounded border border-jade/30 hover:bg-jade/25">Craft Pill (-3 herbs)</button> : <span className="text-silver/40 text-xs"> Not enough herbs</span>}</div><div className="bg-shadow/30 p-3 rounded-lg"><p className="text-pearl">Smithing ({gs.stats.smithing} skill)</p><p className="text-silver/50 text-xs">Ore: {gs.ores} · Need 2 per craft</p>{gs.ores >= 2 ? <button onClick={() => { setGs(prev => prev ? { ...prev, ores: prev.ores - 2, stats: { ...prev.stats, smithing: prev.stats.smithing + Math.floor(Math.random() * 5) + 3, strength: prev.stats.strength + Math.floor(Math.random() * 3) + 2 } } : prev); }} className="mt-1 px-3 py-1 bg-gold/15 text-gold text-xs rounded border border-gold/30 hover:bg-gold/25">Forge Weapon (-2 ore)</button> : <span className="text-silver/40 text-xs"> Not enough ore</span>}</div></div><button onClick={() => setShowCraft(false)} className="mt-4 w-full py-2 bg-mist/10 border border-mist/20 rounded-lg text-silver/60 hover:text-pearl font-ui text-sm transition-all">Close</button></div></div>}
 
         {/* In-game menu */}

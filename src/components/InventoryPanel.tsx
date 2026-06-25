@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameState, Item } from '../game/types';
-
+import { sfxEquip, sfxPop } from '../game/audio';
 
 interface Props { state: GameState; onClose: () => void; onAction: (s: GameState) => void }
 
@@ -12,9 +12,10 @@ export const InventoryPanel: React.FC<Props> = ({ state, onClose, onAction }) =>
   const others = state.inventory.filter(i => i.type === 'technique' || i.type === 'misc');
   const qualityColors: Record<string, string> = { Common: '#888', Uncommon: '#44aa44', Rare: '#4488ff', Legendary: '#f0c040', Divine: '#ff6688' };
 
-  const equipWeapon = (id: string) => onAction({ ...state, equippedWeapon: id });
-  const equipArmor = (id: string) => onAction({ ...state, equippedArmor: id });
+  const equipWeapon = (id: string) => { sfxEquip(); onAction({ ...state, equippedWeapon: id }); };
+  const equipArmor = (id: string) => { sfxEquip(); onAction({ ...state, equippedArmor: id }); };
   const usePill = (item: Item) => {
+    sfxPop(); // Pill consumed sound
     const s = { ...state, inventory: state.inventory.filter(i => i.id !== item.id) };
     if (item.statBonus) {
       const st = { ...s.stats };

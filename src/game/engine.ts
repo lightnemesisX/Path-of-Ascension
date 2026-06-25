@@ -373,9 +373,58 @@ export function reincarnate(state: GameState): GameState {
   };
 }
 
-export function saveGame(s: GameState) { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ ...s, pendingEvent: null })); } catch {} }
-export function loadGame(): GameState | null { try { const d = localStorage.getItem(SAVE_KEY); if (!d) return null; const s = JSON.parse(d); return s.playerName && s.stats ? s as GameState : null; } catch { return null; } }
-export function hasSave(): boolean { try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; } }
+/**
+ * Save game to localStorage.
+ * BLOCKED if player is dead, game is over, or victory screen is showing.
+ * These states should have their saves cleared, not preserved.
+ */
+export function saveGame(s: GameState): boolean {
+  // CRITICAL: Never save dead/ended states
+  if (!s.alive) return false;
+  if (s.phase === 'gameover' || s.phase === 'victory' || s.phase === 'reincarnate') return false;
+  if (s.hp <= 0) return false;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ ...s, pendingEvent: null }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Load game from localStorage.
+ * Only returns a save if the player was alive when saved.
+ */
+export function loadGame(): GameState | null {
+  try {
+    const d = localStorage.getItem(SAVE_KEY);
+    if (!d) return null;
+    const s = JSON.parse(d) as GameState;
+    // Validate it's a real save with a living player
+    if (!s.playerName || !s.stats) return null;
+    if (!s.alive || s.hp <= 0) {
+      // Corrupted save — player was dead. Clear it.
+      clearSave();
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+export function hasSave(): boolean {
+  try {
+    const d = localStorage.getItem(SAVE_KEY);
+    if (!d) return false;
+    const s = JSON.parse(d);
+    // Only show Continue if player was alive
+    return !!(s.playerName && s.stats && s.alive && s.hp > 0);
+  } catch {
+    return false;
+  }
+}
+
 export function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch {} }
 
 export function getAlignmentLabel(a: number) { if (a >= 60) return 'Saint'; if (a >= 30) return 'Righteous'; if (a >= 10) return 'Virtuous'; if (a > -10) return 'Neutral'; if (a > -30) return 'Cunning'; if (a > -60) return 'Villainous'; return 'Demonic'; }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GameState, RaidState } from '../game/types';
 import { createRaidState, resolveDefend, resolveFlee, resolveSurrender, joinRaiderSect } from '../game/raid';
-import { sfxClick, sfxHit, sfxDeath, sfxVictory, ensureAudioContext } from '../game/audio';
+import { sfxClick, sfxHit, sfxDeath, sfxVictory, ensureAudio } from '../game/audio';
 
 interface Props {
   state: GameState;
@@ -65,7 +65,7 @@ export const RaidScreen: React.FC<Props> = ({ state, onRaidEnd }) => {
 
           <div className="space-y-3">
             <button onClick={() => {
-              ensureAudioContext(); sfxHit();
+              ensureAudio(); sfxHit();
               const result = resolveDefend(gs, raid);
               if (result.raid.outcome === 'defend_win') sfxVictory(); else sfxDeath();
               setRaid(result.raid);

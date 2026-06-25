@@ -6,7 +6,7 @@ import {
   playerAttack, playerUseTechnique, playerUseWeapon, playerUseItem,
   enemyTurn, advanceTurn,
 } from '../game/combat';
-import { sfxClick, sfxHit, sfxVictory, sfxDeath, sfxFail, sfxItemReceived, ensureAudioContext } from '../game/audio';
+import { sfxClick, sfxHit, sfxVictory, sfxDeath, sfxFail, sfxItemReceived, sfxPop, sfxFlee, ensureAudio } from '../game/audio';
 
 interface Props {
   state: GameState;
@@ -46,7 +46,7 @@ export const BattleScreen: React.FC<Props> = ({ state, onBattleEnd, onTame, forc
 
   // Helper to run player action then enemy turn then check round
   const doPlayerAction = (actionFn: (b: BattleState) => BattleState) => {
-    ensureAudioContext();
+    ensureAudio();
     sfxHit(); // Player attacks
     let next = actionFn(bs);
     if (next.phase === 'victory' || next.phase === 'tame_prompt') {
@@ -118,7 +118,7 @@ export const BattleScreen: React.FC<Props> = ({ state, onBattleEnd, onTame, forc
             </button>
             <button
               onClick={() => {
-                sfxClick();
+                sfxFlee(); // Whoosh sound on retreat
                 const result = attemptRetreat(bs, state.stats.luck + state.realmIdx * 3);
                 if (result.phase === 'fled') sfxItemReceived();
                 else if (result.phase === 'defeat') sfxDeath();
@@ -294,6 +294,7 @@ export const BattleScreen: React.FC<Props> = ({ state, onBattleEnd, onTame, forc
                     const hpR = item.name.toLowerCase().includes('heal') ? rand(20, 50) : (item.statBonus?.qi ? 0 : 0);
                     const qiR = item.statBonus?.qi || 0;
                     const hpRestore = hpR || (item.name.toLowerCase().includes('heal') ? 30 : 0);
+                    sfxPop(); // Pill consumed sound
                     doPlayerAction(b => playerUseItem(b, item.name, hpRestore, qiR));
                     setShowItemPanel(false);
                   }} className="w-full text-left p-2 bg-shadow/30 rounded border border-mist/10 hover:bg-shadow/50 transition-all">
@@ -337,6 +338,7 @@ export const BattleScreen: React.FC<Props> = ({ state, onBattleEnd, onTame, forc
               </button>
 
               <button onClick={() => {
+                sfxFlee(); // Whoosh sound on retreat attempt
                 const result = attemptBattleRetreat(bs, state.stats.luck + state.realmIdx * 3);
                 setBs(result);
               }} className="col-span-2 p-2 bg-shadow/30 border border-mist/15 rounded-lg hover:bg-shadow/50 transition-all text-center active:scale-95">

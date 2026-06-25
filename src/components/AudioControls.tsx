@@ -1,63 +1,64 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   loadAudioSettings, saveAudioSettings, AudioSettings,
-  createMusicIframe, toggleMusic, isMusicPlaying,
-  ensureAudioContext, sfxClick,
+  initMusic, startMusic, toggleMusic, isMusicPlaying,
+  ensureAudio, sfxClick,
 } from '../game/audio';
 
-interface Props {
-  showSettings?: boolean;
-  onCloseSettings?: () => void;
-}
-
-export const AudioControls: React.FC<Props> = () => {
+export const AudioControls: React.FC = () => {
   const [settings, setSettings] = useState<AudioSettings>(loadAudioSettings);
-  const [musicPlaying, setMusicPlaying] = useState(false);
-  const [needsInteraction, setNeedsInteraction] = useState(true);
+  const [playing, setPlaying] = useState(false);
+  const [needsStart, setNeedsStart] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const initRef = useRef(false);
 
-  // Try to auto-start music on mount
+  // Initialize music ONCE on first mount — never again
   useEffect(() => {
-    if (settings.musicEnabled) {
-      // Most browsers block autoplay — we try and detect if it worked
-      try {
-        createMusicIframe();
-        setMusicPlaying(true);
-        setNeedsInteraction(false);
-      } catch {
-        setNeedsInteraction(true);
-      }
+    if (initRef.current) return;
+    initRef.current = true;
+    const s = loadAudioSettings();
+    if (s.musicEnabled) {
+      initMusic();
+      // Check if autoplay worked after a short delay
+      setTimeout(() => {
+        setPlaying(isMusicPlaying());
+        // If we tried to init but can't tell if it's playing,
+        // show the start button as a fallback
+        if (s.musicEnabled && !document.getElementById('yt-music-iframe')) {
+          setNeedsStart(true);
+        }
+      }, 1500);
     }
   }, []);
 
   // Close panel on outside click
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setShowPanel(false);
-      }
+    if (!showPanel) return;
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setShowPanel(false);
     };
-    if (showPanel) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [showPanel]);
 
   const handleStartMusic = () => {
-    ensureAudioContext();
+    ensureAudio();
     sfxClick();
-    createMusicIframe();
-    setMusicPlaying(true);
-    setNeedsInteraction(false);
+    startMusic();
+    setPlaying(true);
+    setNeedsStart(false);
     const s = { ...settings, musicEnabled: true };
     setSettings(s);
     saveAudioSettings(s);
   };
 
   const handleToggleMusic = () => {
-    ensureAudioContext();
+    ensureAudio();
     sfxClick();
     const nowPlaying = toggleMusic();
-    setMusicPlaying(nowPlaying);
+    setPlaying(nowPlaying);
+    setNeedsStart(false);
     const s = { ...settings, musicEnabled: nowPlaying };
     setSettings(s);
     saveAudioSettings(s);
@@ -67,13 +68,10 @@ export const AudioControls: React.FC<Props> = () => {
     const s = { ...settings, sfxEnabled: !settings.sfxEnabled };
     setSettings(s);
     saveAudioSettings(s);
-    if (s.sfxEnabled) {
-      // Play a test click
-      setTimeout(() => sfxClick(), 50);
-    }
+    if (s.sfxEnabled) setTimeout(() => sfxClick(), 50);
   };
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
     const vol = parseInt(e.target.value);
     const s = { ...settings, musicVolume: vol };
     setSettings(s);
@@ -82,8 +80,8 @@ export const AudioControls: React.FC<Props> = () => {
 
   return (
     <>
-      {/* First-time play button (if autoplay blocked) */}
-      {needsInteraction && settings.musicEnabled && (
+      {/* First-time play button if autoplay blocked */}
+      {needsStart && settings.musicEnabled && (
         <button
           onClick={handleStartMusic}
           className="fixed bottom-16 right-4 z-[61] px-3 py-2 bg-abyss/95 border border-jade/30 rounded-lg text-jade font-ui text-xs hover:bg-jade/10 transition-all animate-pulse shadow-lg"
@@ -94,38 +92,32 @@ export const AudioControls: React.FC<Props> = () => {
 
       {/* Floating audio button */}
       <div ref={panelRef} className="fixed bottom-4 right-4 z-[60]">
-        {/* Settings panel */}
         {showPanel && (
           <div className="absolute bottom-14 right-0 w-64 bg-abyss/95 border border-mist/25 rounded-xl p-4 shadow-2xl shadow-black/50 animate-float-up mb-2 backdrop-blur-md">
-            <h3 className="font-display text-sm text-pearl mb-3">🎵 Audio Settings</h3>
+            <h3 className="font-display text-sm text-pearl mb-3">🎵 Audio</h3>
 
             {/* Music toggle */}
             <div className="flex items-center justify-between mb-3">
-              <span className="font-ui text-xs text-silver/80">🎵 Background Music</span>
+              <span className="font-ui text-xs text-silver/80">🎵 Music</span>
               <button
                 onClick={handleToggleMusic}
-                className={`w-10 h-5 rounded-full transition-all relative ${musicPlaying ? 'bg-jade/50' : 'bg-shadow'}`}
+                className={`w-10 h-5 rounded-full transition-all relative ${playing ? 'bg-jade/50' : 'bg-shadow'}`}
               >
-                <div className={`w-4 h-4 rounded-full absolute top-0.5 transition-all ${musicPlaying ? 'left-5 bg-jade' : 'left-0.5 bg-silver/50'}`} />
+                <div className={`w-4 h-4 rounded-full absolute top-0.5 transition-all ${playing ? 'left-5 bg-jade' : 'left-0.5 bg-silver/50'}`} />
               </button>
             </div>
 
-            {/* Volume slider */}
+            {/* Volume */}
             <div className="mb-3">
               <div className="flex justify-between items-center mb-1">
                 <span className="font-ui text-[10px] text-silver/50">Volume</span>
                 <span className="font-ui text-[10px] text-silver/50">{settings.musicVolume}%</span>
               </div>
               <input
-                type="range"
-                min="0"
-                max="100"
-                value={settings.musicVolume}
-                onChange={handleVolumeChange}
+                type="range" min="0" max="100" value={settings.musicVolume}
+                onChange={handleVolume}
                 className="w-full h-1 rounded-full cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, #2dd4a0 0%, #2dd4a0 ${settings.musicVolume}%, #3a3a5c ${settings.musicVolume}%, #3a3a5c 100%)`,
-                }}
+                style={{ background: `linear-gradient(to right, #2dd4a0 0%, #2dd4a0 ${settings.musicVolume}%, #3a3a5c ${settings.musicVolume}%, #3a3a5c 100%)` }}
               />
             </div>
 
@@ -144,22 +136,14 @@ export const AudioControls: React.FC<Props> = () => {
           </div>
         )}
 
-        {/* Main button */}
         <button
-          onClick={() => {
-            ensureAudioContext();
-            setShowPanel(!showPanel);
-          }}
-          className={`w-11 h-11 rounded-full border flex items-center justify-center transition-all shadow-lg active:scale-90
-            ${musicPlaying
-              ? 'bg-abyss/90 border-jade/30 hover:border-jade/50 shadow-jade/10'
-              : 'bg-abyss/90 border-mist/25 hover:border-mist/40 shadow-black/30'
-            }`}
+          onClick={() => { ensureAudio(); setShowPanel(!showPanel); }}
+          className={`w-11 h-11 rounded-full border flex items-center justify-center transition-all shadow-lg active:scale-90 ${
+            playing ? 'bg-abyss/90 border-jade/30 hover:border-jade/50 shadow-jade/10' : 'bg-abyss/90 border-mist/25 hover:border-mist/40 shadow-black/30'
+          }`}
           title="Audio Settings"
         >
-          <span className={`text-base ${musicPlaying ? 'animate-pulse' : ''}`}>
-            {musicPlaying ? '🎵' : '🔇'}
-          </span>
+          <span className={`text-base ${playing ? 'animate-pulse' : ''}`}>{playing ? '🎵' : '🔇'}</span>
         </button>
       </div>
     </>

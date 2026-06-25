@@ -3,6 +3,7 @@ import { GameState } from '../game/types';
 import { REALMS, REALM_COLORS, SECTS, ACTIONS, ACTIONS_PER_YEAR } from '../game/constants';
 import { getAlignmentLabel, getAlignmentColor, getNextBreakthroughInfo, canAttemptBreakthrough, getBreakthroughChance } from '../game/engine';
 import { getEffectiveLifespan, getLifespanPercent, getYearsRemaining, getAgingColor, getAgingWarning } from '../game/lifespan';
+import { sfxSocialize } from '../game/audio';
 
 interface GameScreenProps {
   state: GameState;
@@ -205,7 +206,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ state, onAction, onOpenS
                 {ACTIONS.map(a => (
                   <button 
                     key={a.id} 
-                    onClick={() => a.id === 'socialize' ? onOpenSocial() : onAction(a.id)} 
+                    onClick={() => { if (a.id === 'socialize') { sfxSocialize(); onOpenSocial(); } else { onAction(a.id); } }} 
                     disabled={actionsLeft <= 0 || !state.alive}
                     className={`text-left p-2.5 bg-shadow/30 border border-mist/10 rounded-lg hover:bg-shadow hover:border-jade/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.97] ${a.id === 'socialize' ? 'border-purple/20' : ''}`}
                   >
