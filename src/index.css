@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #0a0a0f;
+  --color-abyss: #12121a;
+  --color-shadow: #1a1a2e;
+  --color-dusk: #242440;
+  --color-mist: #3a3a5c;
+  --color-silver: #8888aa;
+  --color-pearl: #c8c8e0;
+  --color-jade: #2dd4a0;
+  --color-jade-dark: #1a9e74;
+  --color-crimson: #e63946;
+  --color-crimson-dark: #a82833;
+  --color-gold: #f0c040;
+  --color-gold-dark: #c09a30;
+  --color-qi-blue: #4488ff;
+  --color-purple: #9966ff;
+  --font-display: "Cinzel", serif;
+  --font-body: "Crimson Text", serif;
+  --font-ui: "Inter", sans-serif;
+}
+
+* { scrollbar-width: thin; scrollbar-color: #3a3a5c #12121a; }
+body { background-color: #0a0a0f; color: #c8c8e0; font-family: "Crimson Text", serif; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes floatUp { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 8px rgba(45,212,160,0.3); } 50% { box-shadow: 0 0 20px rgba(45,212,160,0.6); } }
+
+.animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+.animate-float-up { animation: floatUp 0.6s ease-out forwards; }
+.animate-pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
+
+.shimmer-text {
+  background: linear-gradient(90deg, #c8c8e0 0%, #f0c040 25%, #c8c8e0 50%, #2dd4a0 75%, #c8c8e0 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+
+.realm-badge { text-shadow: 0 0 10px currentColor; }
+
+input[type="range"] { -webkit-appearance: none; height: 4px; border-radius: 4px; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #2dd4a0; cursor: pointer; border: 2px solid #12121a; }
+input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #2dd4a0; cursor: pointer; border: 2px solid #12121a; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #12121a; }
+::-webkit-scrollbar-thumb { background: #3a3a5c; border-radius: 4px; }
