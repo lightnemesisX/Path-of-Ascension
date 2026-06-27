@@ -109,6 +109,7 @@ export interface GameState {
   artifacts: string[];
   rivals: string[];
   techniques: string[];
+  activeTechnique: string | null; // name of currently equipped technique
   // System
   systemPoints: number;
   missions: Mission[];
@@ -254,9 +255,13 @@ export interface BattleState {
   poisonDamage: number; // per-turn poison on player
 }
 
+export type BeastBuff = 'luck_ambush' | 'damage_reduce' | 'paralyze' | 'poison_attack' | 'retreat_boost' | 'qi_boost' | 'random_buff';
+
 export interface TamedBeast {
   name: string;
   icon: string;
+  beastType: string; // Spirit Fox, Stone Tortoise, etc.
+  buffType: BeastBuff;
   buffLabel: string;
   attackBonus: number;
   defenseBonus: number;

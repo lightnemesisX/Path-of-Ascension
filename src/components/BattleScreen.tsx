@@ -33,9 +33,7 @@ export const BattleScreen: React.FC<Props> = ({ state, onBattleEnd, onTame, forc
   const armorItem = state.inventory.find(i => i.id === state.equippedArmor);
   const weaponBonus = weaponItem?.statBonus?.strength || 0;
   const armorDef = armorItem?.statBonus?.strength || 0;
-  const technique = state.techniques[0] || null;
-  const sectTech = SECTS[state.sectId]?.uniqueTechnique;
-  const activeTechnique = technique || sectTech || null;
+  const activeTechnique = state.activeTechnique || state.techniques[0] || null;
   const usableItems = state.inventory.filter(i => i.type === 'pill');
   const kindInfo = KIND_LABELS[bs.enemy.kind] || { label: 'Enemy', color: '#888' };
   const eRealmColor = REALM_COLORS[REALMS[bs.enemy.realmIdx]] || '#888';
@@ -119,7 +117,8 @@ export const BattleScreen: React.FC<Props> = ({ state, onBattleEnd, onTame, forc
             <button
               onClick={() => {
                 sfxFlee(); // Whoosh sound on retreat
-                const result = attemptRetreat(bs, state.stats.luck + state.realmIdx * 3);
+                const retreatBonus = state.tamedBeast?.buffType === 'retreat_boost' ? 25 : 0;
+                const result = attemptRetreat(bs, state.stats.luck + state.realmIdx * 3 + retreatBonus);
                 if (result.phase === 'fled') sfxItemReceived();
                 else if (result.phase === 'defeat') sfxDeath();
                 else sfxFail();
@@ -339,7 +338,8 @@ export const BattleScreen: React.FC<Props> = ({ state, onBattleEnd, onTame, forc
 
               <button onClick={() => {
                 sfxFlee(); // Whoosh sound on retreat attempt
-                const result = attemptBattleRetreat(bs, state.stats.luck + state.realmIdx * 3);
+                const rBonus = state.tamedBeast?.buffType === 'retreat_boost' ? 25 : 0;
+                const result = attemptBattleRetreat(bs, state.stats.luck + state.realmIdx * 3 + rBonus);
                 setBs(result);
               }} className="col-span-2 p-2 bg-shadow/30 border border-mist/15 rounded-lg hover:bg-shadow/50 transition-all text-center active:scale-95">
                 <span className="text-sm">🏃</span><span className="font-display text-xs text-silver ml-1.5">Retreat (50% chance)</span>

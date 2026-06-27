@@ -3,7 +3,7 @@ import { GameState } from '../game/types';
 import { REALMS, REALM_COLORS, SECTS, ACTIONS, ACTIONS_PER_YEAR } from '../game/constants';
 import { getAlignmentLabel, getAlignmentColor, getNextBreakthroughInfo, canAttemptBreakthrough, getBreakthroughChance } from '../game/engine';
 import { getEffectiveLifespan, getLifespanPercent, getYearsRemaining, getAgingColor, getAgingWarning } from '../game/lifespan';
-import { sfxSocialize } from '../game/audio';
+import { sfxSocialize, ensureAudio } from '../game/audio';
 
 interface GameScreenProps {
   state: GameState;
@@ -164,12 +164,32 @@ export const GameScreen: React.FC<GameScreenProps> = ({ state, onAction, onOpenS
                 <div className="flex justify-between font-ui text-[10px]"><span className="text-silver/50">🤖 SP</span><span className="text-jade">{state.systemPoints}</span></div>
               </div>
 
+              {/* Companion Beast */}
+              {state.tamedBeast && (
+                <div className="border-t border-mist/10 pt-2">
+                  <div className="font-ui text-[10px] text-silver/50 mb-1">🐾 Companion</div>
+                  <div className="bg-jade/5 border border-jade/15 rounded-lg p-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{state.tamedBeast.icon}</span>
+                      <div>
+                        <div className="font-display text-xs text-jade">{state.tamedBeast.name}</div>
+                        <div className="font-ui text-[9px] text-silver/50">{state.tamedBeast.buffLabel}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-1 font-ui text-[9px]">
+                      <span className="text-crimson/60">+{state.tamedBeast.attackBonus} ATK</span>
+                      <span className="text-qi-blue/60">+{state.tamedBeast.defenseBonus} DEF</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Techniques */}
               {state.techniques.length > 0 && (
                 <div className="border-t border-mist/10 pt-2">
-                  <div className="font-ui text-[10px] text-silver/50 mb-1">Techniques</div>
+                  <div className="font-ui text-[10px] text-silver/50 mb-1">Active: <span className="text-qi-blue">{state.activeTechnique || 'None'}</span></div>
                   <div className="flex flex-wrap gap-1">
-                    {state.techniques.map(t => <span key={t} className="text-[9px] font-ui px-1.5 py-0.5 bg-qi-blue/10 text-qi-blue/80 rounded">{t}</span>)}
+                    {state.techniques.map(t => <span key={t} className={`text-[9px] font-ui px-1.5 py-0.5 rounded ${t === state.activeTechnique ? 'bg-qi-blue/20 text-qi-blue' : 'bg-qi-blue/10 text-qi-blue/60'}`}>{t}</span>)}
                   </div>
                 </div>
               )}
@@ -206,7 +226,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ state, onAction, onOpenS
                 {ACTIONS.map(a => (
                   <button 
                     key={a.id} 
-                    onClick={() => { if (a.id === 'socialize') { sfxSocialize(); onOpenSocial(); } else { onAction(a.id); } }} 
+                    onClick={() => { if (a.id === 'socialize') { const murmur = new Audio('https://path-of-ascension.vercel.app/sounds/murmur.mp3'); murmur.volume = 0.4; murmur.play(); ensureAudio(); sfxSocialize(); onOpenSocial(); } else { onAction(a.id); } }} 
                     disabled={actionsLeft <= 0 || !state.alive}
                     className={`text-left p-2.5 bg-shadow/30 border border-mist/10 rounded-lg hover:bg-shadow hover:border-jade/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.97] ${a.id === 'socialize' ? 'border-purple/20' : ''}`}
                   >

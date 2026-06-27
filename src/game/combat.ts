@@ -186,8 +186,14 @@ export function playerAttack(bs: BattleState, strength: number, tamedBeast: Tame
   const dmg = calcPlayerDamage(atkPower, bs.enemy.defense);
   const newEnemyHp = Math.max(0, bs.enemy.hp - dmg);
   const logs: BattleLogEntry[] = [...bs.log, { text: `You strike for ${dmg} damage!`, actor: 'player' }];
-  const enemy = { ...bs.enemy, hp: newEnemyHp };
-  if (newEnemyHp <= 0) return finishVictory({ ...bs, enemy, log: logs });
+  // Jade Serpent: all attacks apply poison (5 HP/turn for 3 turns on enemy — simulated as bonus damage)
+  let bonusDmg = 0;
+  if (tamedBeast?.buffType === 'poison_attack') {
+    bonusDmg = 5;
+    logs.push({ text: `🐍 ${tamedBeast.name}'s venom adds ${bonusDmg} poison damage!`, actor: 'player' });
+  }
+  const enemy = { ...bs.enemy, hp: Math.max(0, newEnemyHp - bonusDmg) };
+  if (enemy.hp <= 0) return finishVictory({ ...bs, enemy, log: logs });
   return { ...bs, enemy, log: logs };
 }
 
@@ -241,9 +247,17 @@ export function enemyTurn(bs: BattleState, armorDef: number, tamedBeast: TamedBe
     return { ...bs, enemyStunned: false, log: [...bs.log, { text: `${bs.enemy.name} is stunned!`, actor: 'system' }] };
   }
 
+  // Thunder Wolf: 20% chance to paralyze enemy
+  if (tamedBeast?.buffType === 'paralyze' && Math.random() < 0.2) {
+    return { ...bs, enemyStunned: true, log: [...bs.log, { text: `🐺 ${tamedBeast.name} howls! ${bs.enemy.name} is PARALYZED!`, actor: 'system' }] };
+  }
+
   let newBs = { ...bs };
   const logs: BattleLogEntry[] = [...bs.log];
-  const totalDef = armorDef + (tamedBeast?.defenseBonus || 0);
+  let totalDef = armorDef + (tamedBeast?.defenseBonus || 0);
+
+  // Stone Tortoise / Demon Bear: reduce all damage by 20%
+  const damageReduction = tamedBeast?.buffType === 'damage_reduce' ? 0.8 : 1.0;
 
   // Apply poison damage to player first
   if (bs.poisonDamage > 0) {
@@ -326,7 +340,9 @@ export function enemyTurn(bs: BattleState, armorDef: number, tamedBeast: TamedBe
       msg = `${enemy.name} attacks for ${dmg} damage.`;
     }
 
-    newBs = { ...newBs, playerHp: Math.max(0, newBs.playerHp - dmg) };
+    // Apply damage reduction from companion beast (Stone Tortoise, Demon Bear)
+    const finalDmg = Math.max(1, Math.floor(dmg * damageReduction));
+    newBs = { ...newBs, playerHp: Math.max(0, newBs.playerHp - finalDmg) };
     logs.push({ text: msg, actor: 'enemy' });
 
     if (newBs.playerHp <= 0) {
@@ -379,18 +395,44 @@ function finishVictory(bs: BattleState): BattleState {
 
 // ─── TAMING ────────────────────────────────────────────────────────
 
+// Beast type → unique passive buff mapping
+const BEAST_BUFF_MAP: Record<string, { buffType: TamedBeast['buffType']; buffLabel: string; atkBonus: number; defBonus: number }> = {
+  'Spirit Fox':       { buffType: 'luck_ambush',   buffLabel: '+15 Luck, 20% ambush detection',    atkBonus: 5,  defBonus: 3 },
+  'Thunder Wolf':     { buffType: 'paralyze',      buffLabel: '20% chance to paralyze enemy/turn', atkBonus: 12, defBonus: 5 },
+  'Stone Tortoise':   { buffType: 'damage_reduce',  buffLabel: 'Reduce combat damage taken by 20%', atkBonus: 3,  defBonus: 15 },
+  'Jade Serpent':     { buffType: 'poison_attack',  buffLabel: 'All attacks poison (5 HP/turn, 3t)', atkBonus: 8,  defBonus: 5 },
+  'Roc Bird':         { buffType: 'retreat_boost',  buffLabel: '+25% retreat success chance',        atkBonus: 8,  defBonus: 3 },
+  'Ancient Dragon':   { buffType: 'qi_boost',       buffLabel: '+30% Qi cultivation gain per year',  atkBonus: 20, defBonus: 15 },
+  'Demon Bear':       { buffType: 'damage_reduce',  buffLabel: 'Reduce combat damage taken by 20%', atkBonus: 10, defBonus: 12 },
+  'Possessed Beast':  { buffType: 'random_buff',    buffLabel: 'Random buff each year (unpredictable)', atkBonus: 8, defBonus: 8 },
+};
+
 export function attemptTame(bs: BattleState, luck: number, hasTamingScroll: boolean): { success: boolean; beast?: TamedBeast } {
+  // Requires beast below 30% HP
+  if (bs.enemy.hp > bs.enemy.maxHp * 0.3) return { success: false };
+
   let chance = 20 + luck * 0.5;
   if (hasTamingScroll) chance += 30;
+
   if (Math.random() * 100 < chance) {
+    // Look up beast-specific buff, fall back to generic
+    const buffInfo = BEAST_BUFF_MAP[bs.enemy.name] || {
+      buffType: 'damage_reduce' as TamedBeast['buffType'],
+      buffLabel: `+${Math.floor(bs.enemy.attack * 0.15)} ATK, +${Math.floor(bs.enemy.defense * 0.15)} DEF`,
+      atkBonus: Math.floor(bs.enemy.attack * 0.15),
+      defBonus: Math.floor(bs.enemy.defense * 0.15),
+    };
+
     return {
       success: true,
       beast: {
         name: bs.enemy.name,
         icon: bs.enemy.icon,
-        buffLabel: `+${Math.floor(bs.enemy.attack * 0.15)} ATK, +${Math.floor(bs.enemy.defense * 0.15)} DEF`,
-        attackBonus: Math.floor(bs.enemy.attack * 0.15),
-        defenseBonus: Math.floor(bs.enemy.defense * 0.15),
+        beastType: bs.enemy.name,
+        buffType: buffInfo.buffType,
+        buffLabel: buffInfo.buffLabel,
+        attackBonus: buffInfo.atkBonus,
+        defenseBonus: buffInfo.defBonus,
       },
     };
   }

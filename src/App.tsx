@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { GameState, Background, Gender, SectId, BattleState, TribulationState } from './game/types';
-import { createNewGame, performAction, loadGame, hasSave, clearSave, reincarnate, saveGame, attemptBreakthrough, getNextBreakthroughInfo, canAttemptBreakthrough, getBreakthroughChance, consumeAction } from './game/engine';
+import { createNewGame, performAction, loadGame, hasSave, clearSave, reincarnate, saveGame, attemptBreakthrough, getNextBreakthroughInfo, canAttemptBreakthrough, getBreakthroughChance, consumeAction, addLootToState, checkBeastDeathOnDefeat } from './game/engine';
 import { REALMS, STAGES } from './game/constants';
 import { MainMenu } from './components/MainMenu';
 import { CharacterCreation } from './components/CharacterCreation';
@@ -121,9 +121,15 @@ export default function App() {
         for (const [k, v] of Object.entries(sr)) { if (v) st[k as keyof typeof st] += v; }
         s = { ...s, stats: st, systemPoints: s.systemPoints + bs.spReward };
         s.log = [...s.log, { year: s.year, age: s.age, text: `🏆 Victory vs ${bs.enemy.name}! +${sr.qi || 0} Qi, +${sr.strength || 0} STR, +${bs.spReward} SP.`, type: 'combat' as const }];
+        // Add loot items to inventory
+        if (bs.lootGained.length > 0) {
+          s = addLootToState(s, bs.lootGained);
+        }
       } else if (result === 'defeat') {
         const repLoss = 3;
         s = { ...s, stats: { ...s.stats, reputation: Math.max(0, s.stats.reputation - repLoss) } };
+        // 30% chance companion beast dies on defeat
+        s = checkBeastDeathOnDefeat(s);
         // Lose a random non-weapon non-armor item
         const loseableItems = s.inventory.filter(i => i.type !== 'weapon' && i.type !== 'armor');
         if (loseableItems.length > 0) {
@@ -163,6 +169,8 @@ export default function App() {
       const st = { ...s.stats };
       for (const [k, v] of Object.entries(sr)) { if (v) st[k as keyof typeof st] += v; }
       s = { ...s, stats: st, systemPoints: s.systemPoints + bs.spReward };
+      // Add loot items to inventory
+      if (bs.lootGained.length > 0) s = addLootToState(s, bs.lootGained);
 
       if (result.success && result.beast) {
         // Consume taming scroll if used
@@ -199,6 +207,9 @@ export default function App() {
       s.systemPoints = Math.max(0, s.systemPoints + outcome.spChange);
       if (outcome.techniqueLearned && !s.techniques.includes(outcome.techniqueLearned)) {
         s = { ...s, techniques: [...s.techniques, outcome.techniqueLearned] };
+        // Auto-equip if no technique is active
+        if (!s.activeTechnique) s = { ...s, activeTechnique: outcome.techniqueLearned };
+        s.log = [...s.log, { year: s.year, age: s.age, text: `📜 Learned technique: ${outcome.techniqueLearned}!`, type: 'event' as const }];
       }
       s.log = [...s.log, { year: s.year, age: s.age, text: `🗺️ Exploration: ${outcome.text.slice(0, 80)}...`, type: 'action' as const }];
       if (s.hp <= 0) {
@@ -333,11 +344,21 @@ export default function App() {
     }
   }, [gs]);
 
+  // Used by death/victory/reincarnation — clears save, full reset
   const restart = useCallback(() => { clearSave(); setGs(null); setHas(false); setPhase('menu'); setShowSystem(false); setShowInv(false); setShowRealm(false); setShowCraft(false); setShowMenu(false); setShowBattle(false); setExploreEvent(null); setTribulation(null); }, []);
+
+  // Used by "Return to Menu" during active gameplay — SAVES first, then goes to menu
+  const returnToMenu = useCallback(() => {
+    if (gs && gs.alive && gs.phase === 'playing') saveGame(gs);
+    setGs(null);
+    setHas(hasSave());
+    setPhase('menu');
+    setShowSystem(false); setShowInv(false); setShowRealm(false); setShowCraft(false); setShowMenu(false); setShowBattle(false); setExploreEvent(null); setTribulation(null); setShowSocial(false); setShowFamily(false); setShowRaid(false);
+  }, [gs]);
 
   // ─── RENDER ────────────────────────────────────────────
 
-  if (phase === 'menu') return <><MainMenu hasSave={has} onNew={() => { sfxClick(); setPhase('creation'); }} onContinue={() => { sfxClick(); const s = loadGame(); if (s) { setGs(s); setPhase(s.phase as Phase || 'playing'); } }} /><AudioControls /></>;
+  if (phase === 'menu') return <><MainMenu hasSave={has} onNew={() => { clearSave(); setHas(false); setPhase('creation'); }} onContinue={() => { const s = loadGame(); if (s) { setGs(s); setPhase(s.phase as Phase || 'playing'); } }} /><AudioControls /></>;
 
   if (phase === 'creation') return <><CharacterCreation onCreate={(n: string, g: Gender, b: Background, sc: SectId) => { sfxVictory(); setGs(createNewGame(n, g, b, sc)); setPhase('tutorial'); }} onBack={() => { sfxClick(); setPhase('menu'); }} /><AudioControls /></>;
 
@@ -386,7 +407,7 @@ export default function App() {
                 <button onClick={handleSave} className="w-full py-2.5 bg-shadow/40 border border-mist/15 rounded-lg text-left px-4 text-pearl/80 hover:bg-shadow transition-all font-ui text-sm">💾 Save Game</button>
                 <button onClick={() => { setShowMenu(false); }} className="w-full py-2.5 bg-shadow/40 border border-mist/15 rounded-lg text-left px-4 text-pearl/80 hover:bg-shadow transition-all font-ui text-sm">📜 Tutorial (replay)</button>
                 <div className="border-t border-mist/10 pt-2">
-                  <button onClick={restart} className="w-full py-2.5 bg-crimson/10 border border-crimson/20 rounded-lg text-left px-4 text-crimson/80 hover:bg-crimson/20 transition-all font-ui text-sm">🔄 Return to Menu</button>
+                  <button onClick={returnToMenu} className="w-full py-2.5 bg-shadow/40 border border-mist/15 rounded-lg text-left px-4 text-pearl/60 hover:bg-shadow transition-all font-ui text-sm">🔄 Save & Return to Menu</button>
                 </div>
               </div>
               <button onClick={() => setShowMenu(false)} className="mt-4 w-full py-2 bg-mist/10 border border-mist/20 rounded-lg text-silver/60 hover:text-pearl font-ui text-sm transition-all">Close</button>

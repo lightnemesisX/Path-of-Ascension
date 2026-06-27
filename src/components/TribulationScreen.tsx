@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GameState, TribulationState, TribulationAction } from '../game/types';
 import { REALMS, REALM_COLORS } from '../game/constants';
 import {
@@ -16,10 +16,21 @@ interface Props {
 }
 
 export const TribulationScreen: React.FC<Props> = ({ state, targetRealmIdx, targetStage, onSuccess, onFailure }) => {
-  const [ts, setTs] = useState<TribulationState>(() => {
-    sfxTribulation(); // Thunder rumble when tribulation screen opens
-    return createTribulationState(state, targetRealmIdx, targetStage);
-  });
+  const [ts, setTs] = useState<TribulationState>(() => createTribulationState(state, targetRealmIdx, targetStage));
+  const thunderFired = useRef(false);
+
+  // Fire thunder sound ONCE after mount — useEffect runs after render,
+  // so the AudioContext has been resumed by the user gesture that opened this screen
+  useEffect(() => {
+    if (thunderFired.current) return;
+    thunderFired.current = true;
+    const thunder = new Audio('https://path-of-ascension.vercel.app/sounds/lightning.mp3');
+    thunder.volume = 0.7;
+    thunder.play();
+    ensureAudio();
+    console.log('THUNDER TRIGGERED');
+    sfxTribulation();
+  }, []);
 
   const realmColor = REALM_COLORS[REALMS[targetRealmIdx]] || '#9966ff';
   const realmName = REALMS[targetRealmIdx];

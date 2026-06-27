@@ -130,11 +130,14 @@ export function sfxDeath() {
   sweep(200, 80, 0.6, 'sawtooth', 0.15);
 }
 
-/** Tribulation screen — rumbling thunder + sharp crack */
+/** Tribulation screen — thunder MP3 */
 export function sfxTribulation() {
-  tone(60, 0.8, 'sawtooth', 0.12);
-  tone(50, 0.6, 'square', 0.08, 0.1);
-  noise(0.1, 0.35, 0.7); // crack
+  if (!loadAudioSettings().sfxEnabled) return;
+  try {
+    const a = new Audio('https://path-of-ascension.vercel.app/sounds/lightning.mp3');
+    a.volume = 0.7;
+    a.play();
+  } catch {}
 }
 
 /** Cultivation breakthrough — ascending 3-note chime */
@@ -149,12 +152,14 @@ export function sfxItemReceived() {
   tone(1200, 0.08, 'sine', 0.2);
 }
 
-/** Socialize — brief ambient murmur */
+/** Socialize — crowd murmur MP3 */
 export function sfxSocialize() {
-  tone(350, 0.4, 'sine', 0.04);
-  tone(420, 0.35, 'sine', 0.03, 0.05);
-  tone(480, 0.3, 'sine', 0.03, 0.1);
-  noise(0.4, 0.03, 0);
+  if (!loadAudioSettings().sfxEnabled) return;
+  try {
+    const a = new Audio('https://path-of-ascension.vercel.app/sounds/murmur.mp3');
+    a.volume = 0.4;
+    a.play();
+  } catch {}
 }
 
 /** Failed action / not enough resources — buzzer */

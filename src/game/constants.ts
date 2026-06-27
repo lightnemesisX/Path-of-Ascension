@@ -196,6 +196,30 @@ const NPC_BIOS = [
 ];
 const NPC_TEACHINGS = ['Heavenly Sword Flash', 'Blood Rupture Palm', 'Lotus Poison Mist', 'Ghost Step', 'Crimson Sun Explosion', 'Thousand Cut Barrage', 'Void Step Technique', 'Iron Body Art', 'Spirit Sense Method', 'Formation Basics'];
 
+// ─── TECHNIQUE DATA ───────────────────────────────────────────────
+export const TECHNIQUE_DATA: Record<string, { qiCost: number; damage: string; description: string }> = {
+  'Formation Basics': { qiCost: 10, damage: '1.2× ATK', description: 'A basic formation strike. Low cost, low reward.' },
+  'Heavenly Sword Flash': { qiCost: 20, damage: '1.8× ATK', description: 'A blinding sword strike infused with heavenly Qi.' },
+  'Blood Rupture Palm': { qiCost: 25, damage: '2.0× ATK', description: 'A devastating palm strike that ruptures internal Qi.' },
+  'Lotus Poison Mist': { qiCost: 18, damage: '1.5× ATK + poison', description: 'A toxic mist that poisons the enemy over time.' },
+  'Ghost Step': { qiCost: 15, damage: '1.6× ATK', description: 'Vanish and reappear behind the enemy for a surprise strike.' },
+  'Crimson Sun Explosion': { qiCost: 30, damage: '2.2× ATK', description: 'A massive fire-element explosion centered on the target.' },
+  'Thousand Cut Barrage': { qiCost: 22, damage: '1.7× ATK (multi-hit)', description: 'A flurry of rapid strikes that overwhelms defenses.' },
+  'Void Step Technique': { qiCost: 20, damage: '1.8× ATK', description: 'Tear through space to strike from an impossible angle.' },
+  'Iron Body Art': { qiCost: 12, damage: '1.3× ATK + DEF boost', description: 'Hardens the body, dealing damage while boosting defense.' },
+  'Spirit Sense Method': { qiCost: 15, damage: '1.5× ATK (true strike)', description: 'Sense enemy weaknesses for a guaranteed hit.' },
+  'Void Strike Technique': { qiCost: 35, damage: '2.5× ATK (ignores DEF)', description: 'A forbidden strike through the void that ignores all defense.' },
+  'Moonlit Blade Art': { qiCost: 18, damage: '1.6× ATK', description: 'A graceful blade art that shines like moonlight.' },
+  'Earthshaker Palm': { qiCost: 22, damage: '1.9× ATK', description: 'A palm strike that shakes the very earth beneath your feet.' },
+  'Windwalker Steps': { qiCost: 14, damage: '1.4× ATK + speed', description: 'Movement technique that allows rapid successive strikes.' },
+  'Starfall Needle': { qiCost: 20, damage: '1.7× ATK (piercing)', description: 'Needles of compressed Qi that pierce through armor.' },
+  "Dragon's Breath Technique": { qiCost: 28, damage: '2.1× ATK (fire)', description: 'Breathe devastating dragon fire upon your enemy.' },
+  'Celestial Palm Strike': { qiCost: 30, damage: '2.3× ATK', description: 'A palm strike imbued with celestial energy.' },
+  'Void Breathing Method': { qiCost: 16, damage: '1.5× ATK + Qi regen', description: 'A breathing technique that restores Qi while attacking.' },
+  'Heaven-Splitting Sword Intent': { qiCost: 35, damage: '2.5× ATK', description: 'The ultimate sword intent that splits heaven and earth.' },
+  'Primordial Body Forging': { qiCost: 20, damage: '1.8× ATK + STR boost', description: 'Ancient body forging that strengthens while striking.' },
+};
+
 // ─── ITEMS ─────────────────────────────────────────────────────────
 export const ALL_ITEMS = [
   // ── WEAPONS ──────────────────────────────────────────────────────

@@ -289,6 +289,7 @@ export function purchaseFromShop(state: GameState, shopId: string): GameState {
       const techName = template.name;
       if (!s.techniques.includes(techName)) {
         s = { ...s, techniques: [...s.techniques, techName] };
+        if (!s.activeTechnique) s = { ...s, activeTechnique: techName };
       }
       // If it has permanent stat bonuses, apply them
       if (template.statBonus) {

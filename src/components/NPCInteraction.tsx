@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GameState, NPC, Item } from '../game/types';
 import { REALMS, REALM_COLORS, generateNPC, calculateWinChance, getTotalStage } from '../game/constants';
 import { canCourtNpc, getCourtSuccessChance, attemptCourting } from '../game/family';
+import { addLootToState } from '../game/engine';
 
 interface Props { state: GameState; onClose: () => void; onAction: (state: GameState) => void }
 
@@ -292,9 +293,14 @@ export const NPCInteraction: React.FC<Props> = ({ state, onClose, onAction }) =>
     if (npc.relationship <= -30) { repChange = 3; }
     const triggerManhunt = npc.npcType === 'sect_elder';
     setSelectedNpc(null); setCombatResult(null); setDialogue('');
-    let logs = [...state.log, { year: state.year, age: state.age, text: `☠️ Killed ${npc.name}. (${alShift} alignment, ${repChange} rep)`, type: 'combat' as const }];
-    if (triggerManhunt) logs.push({ year: state.year, age: state.age, text: `⚠️ SECT MANHUNT TRIGGERED!`, type: 'event' as const });
-    onAction({ ...state, npcs: state.npcs.filter(n => n.id !== npc.id), stats: { ...state.stats, reputation: Math.max(0, state.stats.reputation + repChange) }, alignment: Math.max(-100, state.alignment + alShift), rivals: triggerManhunt ? [...state.rivals, `${npc.name}'s Sect`] : state.rivals, log: logs });
+    let s = { ...state, npcs: state.npcs.filter(n => n.id !== npc.id), stats: { ...state.stats, reputation: Math.max(0, state.stats.reputation + repChange) }, alignment: Math.max(-100, state.alignment + alShift), rivals: triggerManhunt ? [...state.rivals, `${npc.name}'s Sect`] : state.rivals };
+    // Add NPC loot to inventory
+    if (npc.loot && npc.loot.length > 0) {
+      s = addLootToState(s, npc.loot);
+    }
+    s.log = [...s.log, { year: s.year, age: s.age, text: `☠️ Killed ${npc.name}. (${alShift} alignment, ${repChange} rep)`, type: 'combat' as const }];
+    if (triggerManhunt) s.log = [...s.log, { year: s.year, age: s.age, text: `⚠️ SECT MANHUNT TRIGGERED!`, type: 'event' as const }];
+    onAction(s);
   };
 
   const aliveNpcs = state.npcs.filter(n => n.alive);

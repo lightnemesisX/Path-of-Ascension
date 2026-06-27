@@ -2,7 +2,7 @@ import { GameState, Background, Gender, SectId, LogEntry, Item } from './types';
 import {
   BACKGROUNDS, ACTIONS_PER_YEAR, STARTING_AGE, REALMS, STAGES,
   REALM_QI_THRESHOLDS, MAX_AGE_BASE, AGE_BONUS_PER_REALM, SAVE_KEY,
-  generateNPC, ALL_ITEMS, BREAKTHROUGH_BASE_CHANCE, REALM_LIFESPAN,
+  generateNPC, ALL_ITEMS, BREAKTHROUGH_BASE_CHANCE, REALM_LIFESPAN, SECTS,
 } from './constants';
 import { generateNewMissions, SYSTEM_GREETING, getRandomSystemMessage, updateMissionProgress, processExpiredMissions, addYearlyMissions } from './system';
 import { processFamily } from './family';
@@ -21,6 +21,94 @@ function log(state: GameState, text: string, type: LogEntry['type']): GameState 
   return { ...state, log: [...state.log, { year: state.year, age: state.age, text, type }].slice(-state.maxLogSize) };
 }
 
+// ─── LOOT → INVENTORY CONVERSION ──────────────────────────────────
+// Converts loot name strings into proper Item objects and adds them to inventory.
+// This is the SINGLE function that should be used everywhere items are acquired.
+
+const LOOT_ITEM_MAP: Record<string, { type: string; quality: string; description: string; statBonus?: Record<string, number> }> = {
+  'Iron Sword': { type: 'weapon', quality: 'Common', description: 'A basic iron blade.', statBonus: { strength: 3 } },
+  'Spirit Sword': { type: 'weapon', quality: 'Uncommon', description: 'Blade infused with spiritual energy.', statBonus: { strength: 8, qi: 5 } },
+  'Shadow Cloak': { type: 'armor', quality: 'Legendary', description: '20% dodge chance. Woven from solidified shadows.', statBonus: { strength: 15, luck: 10, qi: 8 } },
+  'Stolen Coins': { type: 'misc', quality: 'Common', description: 'A pouch of stolen spirit stones.' },
+  'Poison Vial': { type: 'misc', quality: 'Uncommon', description: 'A vial of concentrated poison.' },
+  'Spirit Stones': { type: 'material', quality: 'Common', description: 'Crystallized spiritual energy.' },
+  'Technique Scroll': { type: 'technique', quality: 'Rare', description: 'A scroll containing a cultivation technique.' },
+  'Qi Pill': { type: 'pill', quality: 'Common', description: 'Restores 30 Qi in battle.', statBonus: { qi: 30 } },
+  'Healing Pill': { type: 'pill', quality: 'Common', description: 'Restores 50 HP.', statBonus: {} },
+  'Beast Core': { type: 'material', quality: 'Uncommon', description: 'The crystallized core of a spirit beast.' },
+  'Spirit Fang': { type: 'material', quality: 'Uncommon', description: 'A fang imbued with spiritual energy.' },
+  'Rare Hide': { type: 'material', quality: 'Uncommon', description: 'The hide of a spirit beast, useful for crafting.' },
+  'Lightning Core': { type: 'material', quality: 'Rare', description: 'Crackling with residual lightning energy.' },
+  'Dragon Heart': { type: 'material', quality: 'Legendary', description: 'The heart of an ancient dragon. Radiates power.' },
+  'Divine Metal': { type: 'material', quality: 'Divine', description: 'Metal forged by heavenly fire.' },
+  'Immortal Pill Fragment': { type: 'pill', quality: 'Legendary', description: 'A fragment of an Immortal Ascension Pill.', statBonus: { qi: 50, wisdom: 5 } },
+  'Heaven Reaver Shard': { type: 'material', quality: 'Divine', description: 'A shard of the legendary Heaven Reaver.' },
+  'Mysterious Map': { type: 'misc', quality: 'Uncommon', description: 'A map to an unknown location.' },
+  'Rare Herb': { type: 'material', quality: 'Uncommon', description: 'A rare spiritual herb.' },
+  'Ancient Scroll': { type: 'technique', quality: 'Rare', description: 'An ancient cultivation scroll.' },
+  'Divine Artifact': { type: 'misc', quality: 'Divine', description: 'An artifact of divine origin.' },
+  'Enlightenment Pill': { type: 'pill', quality: 'Legendary', description: 'Grants a flash of insight.', statBonus: { wisdom: 10, intelligence: 5 } },
+  'Elder\'s Storage Ring': { type: 'misc', quality: 'Rare', description: 'A spatial ring with residual treasures.' },
+  'Technique Manual': { type: 'technique', quality: 'Uncommon', description: 'A manual for an intermediate technique.' },
+  'Trade Goods': { type: 'misc', quality: 'Common', description: 'Various trade goods of modest value.' },
+  'Rare Materials': { type: 'material', quality: 'Rare', description: 'Assorted rare crafting materials.' },
+  'Fox Core': { type: 'material', quality: 'Uncommon', description: 'The illusion-infused core of a Spirit Fox.' },
+  'Dark Crystal': { type: 'material', quality: 'Rare', description: 'A crystal radiating dark energy.' },
+  'Corrupted Core': { type: 'material', quality: 'Rare', description: 'A core corrupted by demonic energy.' },
+  'Rare Technique Scroll': { type: 'technique', quality: 'Rare', description: 'A scroll containing a rare technique.' },
+  'Lucky Charm': { type: 'misc', quality: 'Uncommon', description: 'A charm that brings good fortune.', statBonus: { luck: 3 } },
+};
+
+export function convertLootToItems(lootNames: string[]): Item[] {
+  return lootNames.map(name => {
+    const template = LOOT_ITEM_MAP[name];
+    if (template) {
+      return {
+        id: `loot_${name.replace(/\s/g, '_').toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        name,
+        type: template.type as Item['type'],
+        quality: template.quality as Item['quality'],
+        description: template.description,
+        statBonus: template.statBonus,
+        quantity: 1,
+      };
+    }
+    // Fallback for unknown loot names
+    return {
+      id: `loot_${name.replace(/\s/g, '_').toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      name,
+      type: 'misc' as Item['type'],
+      quality: 'Common' as Item['quality'],
+      description: `${name} — a mysterious item.`,
+      quantity: 1,
+    };
+  });
+}
+
+/** Add loot to game state: converts strings to Items, adds to inventory, logs, and handles herbs/ores */
+export function addLootToState(state: GameState, lootNames: string[]): GameState {
+  if (lootNames.length === 0) return state;
+  const items = convertLootToItems(lootNames);
+  let s = { ...state };
+
+  // Handle special loot that goes to counters instead of inventory
+  const invItems: Item[] = [];
+  for (const item of items) {
+    if (item.name === 'Spirit Stones') {
+      s = { ...s, systemPoints: s.systemPoints + 5 };
+    } else if (item.name === 'Rare Herb' || item.name === 'Spirit Herb') {
+      s = { ...s, herbs: s.herbs + 2 };
+    } else {
+      invItems.push(item);
+    }
+  }
+
+  s = { ...s, inventory: [...s.inventory, ...invItems] };
+  const itemNames = lootNames.join(', ');
+  s.log = [...s.log, { year: s.year, age: s.age, text: `📦 Items received: ${itemNames}`, type: 'event' as const }];
+  return s;
+}
+
 function apply(state: GameState, sc: Partial<Record<string, number>>, hp: number, al: number): GameState {
   const s = { ...state.stats };
   for (const [k, v] of Object.entries(sc)) { if (v !== undefined && v !== null) s[k as keyof typeof s] = Math.max(0, (s[k as keyof typeof s] || 0) + v); }
@@ -29,6 +117,12 @@ function apply(state: GameState, sc: Partial<Record<string, number>>, hp: number
 
 export function createNewGame(name: string, gender: Gender, background: Background, sectId: SectId): GameState {
   const bg = BACKGROUNDS[background];
+  const sectInfo = SECTS[sectId];
+  const startTechniques: string[] = [];
+  if (sectId !== 'rogue') {
+    startTechniques.push('Formation Basics');
+    if (sectInfo && sectInfo.uniqueTechnique !== 'None') startTechniques.push(sectInfo.uniqueTechnique);
+  }
   return {
     phase: 'tutorial', playerName: name, gender, background, sectId,
     stats: { qi: bg.qi, strength: bg.str, intelligence: bg.int, luck: bg.luck, reputation: bg.rep, wisdom: bg.wis, charm: bg.chr, smithing: bg.smith, alchemy: bg.alch },
@@ -36,7 +130,8 @@ export function createNewGame(name: string, gender: Gender, background: Backgrou
     log: [{ year: 1, age: STARTING_AGE, text: `${name} begins their cultivation journey.`, type: 'system' }],
     alive: true, maxHp: bg.hp, hp: bg.hp,
     artifacts: [], rivals: [],
-    techniques: sectId === 'rogue' ? [] : ['Formation Basics'],
+    techniques: startTechniques,
+    activeTechnique: startTechniques.length > 0 ? startTechniques[startTechniques.length - 1] : null,
     systemPoints: 5, missions: generateNewMissions(1, 0), systemMessages: [SYSTEM_GREETING], totalMilestones: 0,
     npcs: [],
     inventory: [mkItem('iron_sword', 1), mkItem('cloth_robe', 1), { id: 'spirit_herb', name: 'Spirit Herb', type: 'material' as Item['type'], quality: 'Common' as Item['quality'], description: 'A basic spiritual herb.', quantity: 5 }],
@@ -272,6 +367,56 @@ function tribulation(state: GameState): GameState {
   return ns.hp <= 0 ? { ...ns, alive: false, phase: 'reincarnate', log: [...ns.log, { year: ns.year, age: ns.age, text: `💀 The tribulation claims your life.`, type: 'death' }] } : ns;
 }
 
+// ─── COMPANION BEAST PROCESSING ───────────────────────────────────
+
+function processCompanionYearly(state: GameState): GameState {
+  if (!state.tamedBeast) return state;
+  let s = { ...state };
+  const beast = s.tamedBeast!;
+
+  switch (beast.buffType) {
+    case 'qi_boost':
+      // Ancient Dragon: +30% Qi cultivation gain per year
+      const qiBonus = Math.floor(s.stats.qi * 0.3);
+      s = { ...s, stats: { ...s.stats, qi: s.stats.qi + Math.max(3, qiBonus) } };
+      s = log(s, `🐉 ${beast.name} channels dragon energy. +${Math.max(3, qiBonus)} Qi.`, 'event');
+      break;
+    case 'luck_ambush':
+      // Spirit Fox: +15 Luck passive (applied once)
+      if (s.year === 1 || Math.random() < 0.1) {
+        s = log(s, `🦊 ${beast.name}'s spiritual senses tingle. You feel more fortunate.`, 'event');
+      }
+      break;
+    case 'random_buff':
+      // Possessed Beast: random buff each year
+      const buffs = ['strength', 'qi', 'intelligence', 'luck', 'wisdom'] as const;
+      const stat = buffs[Math.floor(Math.random() * buffs.length)];
+      const amt = rand(3, 8);
+      const newStats = { ...s.stats, [stat]: s.stats[stat] + amt };
+      s = { ...s, stats: newStats };
+      s = log(s, `👹 ${beast.name} radiates chaotic energy. +${amt} ${stat}!`, 'event');
+      break;
+    default:
+      break;
+  }
+  return s;
+}
+
+/** Check if tamed beast dies after a combat defeat. Call from handleBattleEnd. */
+export function checkBeastDeathOnDefeat(state: GameState): GameState {
+  if (!state.tamedBeast) return state;
+  // 30% chance beast dies on defeat
+  if (Math.random() < 0.3) {
+    const name = state.tamedBeast.name;
+    return {
+      ...state,
+      tamedBeast: null,
+      log: [...state.log, { year: state.year, age: state.age, text: `💔 Your companion ${name} was slain protecting you!`, type: 'death' as const }],
+    };
+  }
+  return state;
+}
+
 function advanceYear(state: GameState): GameState {
   const na = state.age + 1;
   const ny = state.year + 1;
@@ -290,6 +435,9 @@ function advanceYear(state: GameState): GameState {
   
   // Process family (partner buffs, children aging, births, past-life recognition)
   s = processFamily(s);
+  
+  // Process companion beast yearly buffs
+  s = processCompanionYearly(s);
   
   // Process captivity
   s = processCaptivity(s);
@@ -359,7 +507,7 @@ export function reincarnate(state: GameState): GameState {
     maxHp: bg.hp, hp: bg.hp, alive: true, actionsThisYear: 0, artifacts: [], npcs: [], rivals: [], // actionsThisYear starts at 0, counts up to ACTIONS_PER_YEAR = 5 (do not change)
     inventory: [mkItem('iron_sword', 1), mkItem('cloth_robe', 1), { id: 'spirit_herb', name: 'Spirit Herb', type: 'material' as Item['type'], quality: 'Common' as Item['quality'], description: 'A basic spiritual herb.', quantity: 5 }],
     equippedWeapon: 'iron_sword', equippedArmor: 'cloth_robe', herbs: 5, ores: 2,
-    techniques: state.techniques.slice(0, 5), keptTechniques: state.techniques.slice(0, 5),
+    techniques: state.techniques.slice(0, 5), activeTechnique: state.techniques[0] || null, keptTechniques: state.techniques.slice(0, 5),
     reincarnationCount: state.reincarnationCount + 1, pastLifeEchoes: eb, keptWisdom: kw,
     systemPoints: 10 + eb * 5, missions: generateNewMissions(1, 0),
     systemMessages: [`Past life echo: ${eb}x bonus. Your soul remembers...`],
