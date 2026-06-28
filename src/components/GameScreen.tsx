@@ -65,12 +65,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({ state, onAction, onOpenS
             {state.pastLifeEchoes > 0 && <span className="text-[10px] font-ui px-1.5 py-0.5 bg-purple/15 text-purple/80 rounded">Echo x{state.pastLifeEchoes}</span>}
           </div>
           <div className="flex items-center gap-1.5">
-            <button onClick={onOpenRealmGuide} className="px-2 py-1 bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">📖</button>
-            <button onClick={onOpenSystem} className="px-2 py-1 bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">🤖</button>
-            <button onClick={onOpenInventory} className="px-2 py-1 bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">🎒</button>
-            <button onClick={onOpenCrafting} className="px-2 py-1 bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">⚗️</button>
-            <button onClick={onOpenFamily} className="px-2 py-1 bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">{state.partner ? '💕' : '👨‍👩‍👧'}</button>
-            <button onClick={onOpenMenu} className="px-2 py-1 bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">⚙️</button>
+            <button onClick={onOpenRealmGuide} style={{ touchAction: 'manipulation' }} className="px-2 py-1 min-w-[36px] min-h-[36px] bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">📖</button>
+            <button onClick={onOpenSystem} style={{ touchAction: 'manipulation' }} className="px-2 py-1 min-w-[36px] min-h-[36px] bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">🤖</button>
+            <button onClick={onOpenInventory} style={{ touchAction: 'manipulation' }} className="px-2 py-1 min-w-[36px] min-h-[36px] bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">🎒</button>
+            <button onClick={onOpenCrafting} style={{ touchAction: 'manipulation' }} className="px-2 py-1 min-w-[36px] min-h-[36px] bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">⚗️</button>
+            <button onClick={onOpenFamily} style={{ touchAction: 'manipulation' }} className="px-2 py-1 min-w-[36px] min-h-[36px] bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">{state.partner ? '💕' : '👨‍👩‍👧'}</button>
+            <button onClick={onOpenMenu} style={{ touchAction: 'manipulation' }} className="px-2 py-1 min-w-[36px] min-h-[36px] bg-shadow/40 border border-mist/15 rounded text-[10px] font-ui text-silver/60 hover:text-pearl transition-all">⚙️</button>
           </div>
         </div>
       </div>
@@ -109,7 +109,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({ state, onAction, onOpenS
                     {canBreakthrough && (
                       <button
                         onClick={onAttemptBreakthrough}
-                        className="mt-2 w-full py-2 bg-jade/20 border border-jade/40 rounded-lg text-jade font-display text-sm hover:bg-jade/30 hover:shadow-[0_0_15px_rgba(45,212,160,0.2)] transition-all animate-pulse-glow"
+                        style={{ touchAction: 'manipulation' }}
+                        className="mt-2 w-full py-2 min-h-[44px] bg-jade/20 border border-jade/40 rounded-lg text-jade font-display text-sm hover:bg-jade/30 hover:shadow-[0_0_15px_rgba(45,212,160,0.2)] transition-all animate-pulse-glow"
                       >
                         ⚡ Attempt Breakthrough ({breakthroughChance}% chance)
                       </button>
@@ -226,9 +227,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({ state, onAction, onOpenS
                 {ACTIONS.map(a => (
                   <button 
                     key={a.id} 
-                    onClick={() => { if (a.id === 'socialize') { const murmur = new Audio('https://path-of-ascension.vercel.app/sounds/murmur.mp3'); murmur.volume = 0.4; murmur.play(); ensureAudio(); sfxSocialize(); onOpenSocial(); } else { onAction(a.id); } }} 
+                    onClick={() => {
+                      try { ensureAudio(); } catch (_) {}
+                      if (a.id === 'socialize') {
+                        try { const murmur = new Audio('https://path-of-ascension.vercel.app/sounds/murmur.mp3'); murmur.volume = 0.4; murmur.play().catch(() => {}); sfxSocialize(); } catch (_) {}
+                        onOpenSocial();
+                      } else {
+                        onAction(a.id);
+                      }
+                    }}
                     disabled={actionsLeft <= 0 || !state.alive}
-                    className={`text-left p-2.5 bg-shadow/30 border border-mist/10 rounded-lg hover:bg-shadow hover:border-jade/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.97] ${a.id === 'socialize' ? 'border-purple/20' : ''}`}
+                    style={{ touchAction: 'manipulation' }}
+                    className={`text-left p-2.5 min-h-[52px] bg-shadow/30 border border-mist/10 rounded-lg hover:bg-shadow hover:border-jade/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.97] ${a.id === 'socialize' ? 'border-purple/20' : ''}`}
                   >
                     <div className="flex items-center gap-1.5"><span className="text-sm">{a.icon}</span><span className="font-display text-xs text-pearl">{a.name}</span></div>
                     <p className="font-ui text-[9px] text-silver/40 mt-0.5">{a.desc}</p>
